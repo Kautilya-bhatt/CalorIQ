@@ -111,7 +111,12 @@ html, body, [class*="css"], .stApp {{ font-family: 'Inter', sans-serif; }}
         {BG};
     color: #E6EDF7;
 }}
-#MainMenu, footer, header[data-testid="stHeader"] {{ visibility: hidden; height: 0; }}
+/* Hide Streamlit chrome, but keep the header itself so the sidebar open/close arrow stays reachable */
+#MainMenu, footer, [data-testid="stToolbar"], [data-testid="stDecoration"] {{ visibility: hidden; }}
+header[data-testid="stHeader"] {{ background: transparent; }}
+[data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapsedControl"] {{ visibility: visible !important; color: {ACCENT}; }}
+[data-testid="stExpandSidebarButton"] svg, [data-testid="stSidebarCollapseButton"] svg {{ color: {ACCENT}; }}
 .block-container {{ padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1280px; }}
 
 /* Sidebar */
