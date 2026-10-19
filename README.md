@@ -247,7 +247,7 @@ import joblib
 import pandas as pd
 
 # Load the pre-trained model
-model = joblib.load("mobile_charging_time_prediction_model.pki")
+model = joblib.load("Calories.pki")
 
 # Prepare your input
 new_data = pd.DataFrame({
