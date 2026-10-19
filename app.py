@@ -12,8 +12,9 @@ The saved model is only loaded and used for inference. It is never retrained.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import joblib
 import numpy as np
@@ -31,7 +32,7 @@ st.set_page_config(
     page_title="CALORIQ — AI Calories Predictor",
     page_icon="🔥",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -92,6 +93,8 @@ DEFAULTS = {
     "Body_Temp": 40.0,
 }
 
+DEFAULT_TZ = "Asia/Kolkata"  # used only if the browser timezone can't be detected
+
 ACCENT = "#00F5A0"
 ACCENT_2 = "#00D9F5"
 BG = "#070B14"
@@ -127,12 +130,12 @@ section[data-testid="stSidebar"] {{
 .brand {{ font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1.55rem; letter-spacing:.14em;
          background:linear-gradient(90deg,{ACCENT},{ACCENT_2}); -webkit-background-clip:text;
          -webkit-text-fill-color:transparent; margin-bottom:0; }}
-.brand-sub {{ color:#7C8AA5; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; margin-bottom:1.2rem; }}
+.brand-sub {{ color:#9AA8C2; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; margin-bottom:1.2rem; }}
 
 /* Glass cards */
 .glass {{
-    background: linear-gradient(145deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
-    border: 1px solid rgba(255,255,255,0.09);
+    background: linear-gradient(145deg, rgba(255,255,255,0.09), rgba(255,255,255,0.04));
+    border: 1px solid rgba(255,255,255,0.16);
     border-radius: 20px;
     padding: 1.4rem 1.5rem;
     box-shadow: 0 10px 40px rgba(0,0,0,0.35);
@@ -146,7 +149,7 @@ section[data-testid="stSidebar"] {{
 .hero h1 {{ font-family:'Space Grotesk',sans-serif; font-size:2.5rem; font-weight:700; margin:0 0 .2rem 0; line-height:1.1; }}
 .hero h1 span {{ background:linear-gradient(90deg,{ACCENT},{ACCENT_2}); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }}
 .hero .tag {{ color:{ACCENT}; font-weight:600; letter-spacing:.18em; text-transform:uppercase; font-size:.85rem; margin-bottom:.9rem; }}
-.hero p {{ color:#A9B6CC; max-width:760px; margin:0; line-height:1.65; }}
+.hero p {{ color:#C3CEE0; max-width:760px; margin:0; line-height:1.65; }}
 
 .section-title {{ font-family:'Space Grotesk',sans-serif; font-size:1.15rem; font-weight:700; margin:1.4rem 0 .6rem 0; }}
 .section-title::before {{ content:""; display:inline-block; width:4px; height:1.05rem; margin-right:.6rem; vertical-align:-2px;
@@ -161,22 +164,22 @@ section[data-testid="stSidebar"] {{
 
 /* Metric cards */
 .metric {{ text-align:left; }}
-.metric .k {{ color:#8A98B3; font-size:.74rem; letter-spacing:.1em; text-transform:uppercase; font-weight:600; }}
+.metric .k {{ color:#A3B1C9; font-size:.74rem; letter-spacing:.1em; text-transform:uppercase; font-weight:600; }}
 .metric .v {{ font-family:'Space Grotesk',sans-serif; font-size:1.9rem; font-weight:700; margin-top:.2rem; }}
-.metric .s {{ color:#6F7D98; font-size:.78rem; margin-top:.1rem; }}
+.metric .s {{ color:#93A1BA; font-size:.78rem; margin-top:.1rem; }}
 
 /* Result card */
 .result {{ text-align:center; padding:2rem 1.5rem; border:1px solid rgba(0,245,160,.35);
           background: linear-gradient(145deg, rgba(0,245,160,0.12), rgba(0,217,245,0.05));
           box-shadow: 0 0 60px rgba(0,245,160,.12), 0 10px 40px rgba(0,0,0,.4); }}
-.result .k {{ color:#9FB3C8; letter-spacing:.16em; text-transform:uppercase; font-size:.8rem; font-weight:600; }}
+.result .k {{ color:#B8C8DB; letter-spacing:.16em; text-transform:uppercase; font-size:.8rem; font-weight:600; }}
 .result .big {{ font-family:'Space Grotesk',sans-serif; font-size:4.2rem; font-weight:700; line-height:1.05; margin:.4rem 0;
                background:linear-gradient(90deg,{ACCENT},{ACCENT_2}); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }}
 .result .unit {{ font-size:1.4rem; color:#CFE; font-weight:500; -webkit-text-fill-color:#CFE; }}
-.result .note {{ color:#93A3BC; font-size:.9rem; max-width:560px; margin:.6rem auto 0 auto; line-height:1.55; }}
+.result .note {{ color:#B4C2D8; font-size:.9rem; max-width:560px; margin:.6rem auto 0 auto; line-height:1.55; }}
 
 .disclaimer {{ border-left:3px solid {ACCENT_2}; padding:.7rem 1rem; background:rgba(0,217,245,.06);
-              border-radius:0 12px 12px 0; color:#A9B6CC; font-size:.85rem; }}
+              border-radius:0 12px 12px 0; color:#C3CEE0; font-size:.85rem; }}
 
 /* Inputs */
 div[data-testid="stForm"] {{ background:linear-gradient(145deg, rgba(255,255,255,0.06), rgba(255,255,255,0.015));
@@ -189,13 +192,39 @@ div[data-testid="stForm"] {{ background:linear-gradient(145deg, rgba(255,255,255
     box-shadow:0 8px 28px rgba(0,245,160,.28); padding:.7rem 1rem; font-size:1rem; }}
 .stFormSubmitButton > button:hover, .stButton > button:hover {{ transform: translateY(-1px); border-color:{ACCENT}; }}
 
-.footer {{ text-align:center; color:#5E6C86; font-size:.82rem; margin-top:3rem; padding-top:1.2rem;
+.footer {{ text-align:center; color:#8B9AB5; font-size:.82rem; margin-top:3rem; padding-top:1.2rem;
           border-top:1px solid rgba(255,255,255,.06); }}
 
+/* Readability: keep widgets dark & high-contrast even if the phone is in light mode */
+:root, .stApp {{ color-scheme: dark; }}
+.stApp label, .stApp [data-testid="stWidgetLabel"] p {{ color:#E6EDF7 !important; }}
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] p {{ color:#B4C2D8 !important; }}
+[data-testid="stSliderTickBarMin"], [data-testid="stSliderTickBarMax"] {{ color:#B4C2D8 !important; }}
+[data-testid="stSliderThumbValue"], [data-testid="stThumbValue"] {{ color:{ACCENT} !important; font-weight:700; }}
+div[data-baseweb="input"], div[data-baseweb="base-input"] {{
+    background:rgba(255,255,255,.07) !important; border-color:rgba(255,255,255,.2) !important; }}
+div[data-baseweb="input"] input, div[data-baseweb="base-input"] input {{
+    color:#F2F6FC !important; -webkit-text-fill-color:#F2F6FC !important; }}
+div[data-testid="stNumberInput"] button {{ background:rgba(255,255,255,.08) !important; color:#E6EDF7 !important; }}
+.stDownloadButton > button {{ border-radius:12px; font-weight:700; border:1px solid rgba(255,255,255,.2);
+    background:rgba(255,255,255,.06); color:#E6EDF7; }}
+section[data-testid="stSidebar"] label, section[data-testid="stSidebar"] p {{ color:#E6EDF7 !important; }}
+section[data-testid="stSidebar"] [data-testid="stCaptionContainer"] p {{ color:#B4C2D8 !important; }}
+
 @media (max-width: 768px) {{
-    .hero h1 {{ font-size:1.8rem; }}
-    .result .big {{ font-size:3rem; }}
-    .block-container {{ padding-left:1rem; padding-right:1rem; }}
+    .block-container {{ padding: 3.2rem 1rem 2rem 1rem; }}
+    .glass {{ padding:1.1rem 1.1rem; border-radius:16px; backdrop-filter:none; -webkit-backdrop-filter:none; }}
+    .hero {{ padding:1.4rem 1.2rem; }}
+    .hero h1 {{ font-size:1.7rem; }}
+    .hero::after {{ width:150px; height:150px; right:-60px; top:-60px; }}
+    .hero p {{ font-size:.95rem; }}
+    .section-title {{ font-size:1.05rem; }}
+    .metric .v {{ font-size:1.5rem; }}
+    .result {{ padding:1.5rem 1rem; }}
+    .result .big {{ font-size:2.8rem; }}
+    .result .unit {{ font-size:1.1rem; }}
+    div[data-testid="stForm"] {{ padding:1rem; }}
+    .stButton > button, .stFormSubmitButton > button, .stDownloadButton > button {{ min-height:48px; width:100%; }}
 }}
 </style>
 """
@@ -360,14 +389,15 @@ def style_fig(fig: go.Figure, height: int = 380) -> go.Figure:
         template="plotly_dark",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font=dict(family="Inter, sans-serif", color="#CBD5E6"),
+        font=dict(family="Inter, sans-serif", color="#E1E8F4", size=13),
+        dragmode=False,  # lets the page scroll when a finger is on the chart
         margin=dict(l=20, r=20, t=55, b=30),
         height=height,
         title_font=dict(family="Space Grotesk, sans-serif", size=16),
-        legend=dict(bgcolor="rgba(0,0,0,0)"),
+        legend=dict(bgcolor="rgba(0,0,0,0)", orientation="h", yanchor="top", y=-0.18, xanchor="left", x=0),
     )
-    fig.update_xaxes(gridcolor="rgba(255,255,255,0.06)", zeroline=False)
-    fig.update_yaxes(gridcolor="rgba(255,255,255,0.06)", zeroline=False)
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.14)", zeroline=False, automargin=True)
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.14)", zeroline=False, automargin=True)
     return fig
 
 
@@ -379,7 +409,7 @@ def fig_gauge(pred: float, df: pd.DataFrame | None) -> go.Figure:
         value=pred,
         number=dict(suffix=" kcal", font=dict(size=34, color="#E6EDF7")),
         gauge=dict(
-            axis=dict(range=[0, axis_max], tickcolor="#5E6C86"),
+            axis=dict(range=[0, axis_max], tickcolor="#9FB0C8", tickfont=dict(color="#CBD5E6")),
             bar=dict(color=ACCENT),
             bgcolor="rgba(255,255,255,0.04)",
             borderwidth=0,
@@ -403,6 +433,7 @@ def fig_contributions(table: pd.DataFrame, pred: float) -> go.Figure:
     ))
     fig.update_layout(title="How the model built this estimate (coefficient × input)",
                       yaxis_title="kcal", showlegend=False)
+    fig.update_xaxes(tickangle=-30)
     return style_fig(fig, 380)
 
 
@@ -501,6 +532,32 @@ def reset_inputs() -> None:
     st.session_state["last"] = None
 
 
+def now_local() -> datetime:
+    """
+    Real current time in the VIEWER's timezone.
+    The server (e.g. Streamlit Cloud) usually runs in UTC, so a plain datetime.now() shows the wrong time.
+    st.context.timezone gives the browser's timezone; if unavailable we fall back to India time (IST).
+    """
+    tz_name = None
+    try:
+        tz_name = st.context.timezone
+    except Exception:
+        pass
+    for name in (tz_name, DEFAULT_TZ):
+        if not name:
+            continue
+        try:
+            return datetime.now(ZoneInfo(name))
+        except Exception:
+            continue
+    return datetime.now(timezone(timedelta(hours=5, minutes=30), "IST"))
+
+
+def show_chart(fig: go.Figure) -> None:
+    """Plotly chart that behaves on phones: full width, no toolbar, no scroll-trapping."""
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "scrollZoom": False})
+
+
 def history_df() -> pd.DataFrame:
     return pd.DataFrame(st.session_state["history"])
 
@@ -544,7 +601,7 @@ def page_dashboard(model, model_err, df, df_err) -> None:
 
     if len(hist) >= 1:
         section("Your prediction history")
-        st.plotly_chart(fig_history(hist), width="stretch")
+        show_chart(fig_history(hist))
     else:
         st.info("No predictions yet. Open **Predict** in the sidebar to generate your first estimate.")
 
@@ -611,13 +668,16 @@ def page_predict(model, model_err, df, df_err) -> None:
                         )
                     else:
                         prev = st.session_state["history"][-1]["Predicted kcal"] if st.session_state["history"] else None
+                        stamp = now_local()
                         st.session_state["history"].append({
                             "Run": len(st.session_state["history"]) + 1,
-                            "Time": datetime.now().strftime("%H:%M:%S"),
+                            "Date": stamp.strftime("%d %b %Y"),
+                            "Time": stamp.strftime("%I:%M:%S %p"),
                             **values,
                             "Predicted kcal": round(pred, 2),
                         })
-                        st.session_state["last"] = {"values": values, "pred": pred, "warns": warns, "prev": prev}
+                        st.session_state["last"] = {"values": values, "pred": pred, "warns": warns, "prev": prev,
+                                                    "at": stamp.strftime("%d %b %Y, %I:%M:%S %p %Z")}
 
     last = st.session_state.get("last")
     if last:
@@ -640,17 +700,19 @@ def page_predict(model, model_err, df, df_err) -> None:
         if last["prev"] is not None:
             delta = pred - last["prev"]
             st.caption(f"Compared with your previous prediction: {delta:+.1f} kcal.")
+        if last.get("at"):
+            st.caption(f"Predicted at {last['at']}")
         disclaimer()
 
         left, right = st.columns([1, 1.4])
         with left:
-            st.plotly_chart(fig_gauge(pred, df), width="stretch")
+            show_chart(fig_gauge(pred, df))
         with right:
-            st.plotly_chart(fig_contributions(contribution_table(model, last["values"]), pred), width="stretch")
+            show_chart(fig_contributions(contribution_table(model, last["values"]), pred))
 
         hist = history_df()
         if len(hist) > 1:
-            st.plotly_chart(fig_history(hist), width="stretch")
+            show_chart(fig_history(hist))
 
     hist = history_df()
     if len(hist):
@@ -702,11 +764,11 @@ def page_insights(model, model_err, df, df_err) -> None:
                 metric_card("RMSE (test)", f"{t['RMSE']:.2f} kcal", f"train: {ev['Train']['RMSE']:.2f}")
             with c4:
                 metric_card("Test samples", f"{t['n']:,}", f"train: {ev['Train']['n']:,}")
-            st.plotly_chart(fig_actual_vs_pred(ev["test_actual"], ev["test_pred"]), width="stretch")
+            show_chart(fig_actual_vs_pred(ev["test_actual"], ev["test_pred"]))
 
     section("What drives the prediction")
     try:
-        st.plotly_chart(fig_coefficients(model, df), width="stretch")
+        show_chart(fig_coefficients(model, df))
         eq = pd.DataFrame({
             "Feature": [LABELS[f] for f in model_feature_order(model)],
             "Coefficient": np.ravel(model.coef_),
@@ -719,7 +781,7 @@ def page_insights(model, model_err, df, df_err) -> None:
 
     if df is not None:
         section("Feature correlations")
-        st.plotly_chart(fig_heatmap(df), width="stretch")
+        show_chart(fig_heatmap(df))
 
         section("Dataset overview")
         st.write(f"**{len(df):,} rows** × **{df.shape[1]} columns** (duplicates removed, as in the notebook).")
@@ -731,7 +793,7 @@ def page_insights(model, model_err, df, df_err) -> None:
     hist = history_df()
     if len(hist) > 1:
         section("Prediction history")
-        st.plotly_chart(fig_history(hist), width="stretch")
+        show_chart(fig_history(hist))
 
 
 def page_about() -> None:
